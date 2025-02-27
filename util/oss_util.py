@@ -23,17 +23,15 @@ logger = logging.getLogger(__name__)
 class OSSUtil:
     def __init__(self):
         load_dotenv()
-        self.S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL')
-        self.S3_ACCESS_KEY_ID = os.getenv('S3_ACCESS_KEY_ID')
-        self.S3_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY')
+        self.AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+        self.AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
         self.S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME')
         self.S3_CUSTOM_DOMAIN = os.getenv('S3_CUSTOM_DOMAIN')
         self.s3 = boto3.client(
             's3',
-            endpoint_url=self.S3_ENDPOINT_URL,
-            aws_access_key_id=self.S3_ACCESS_KEY_ID,
-            aws_secret_access_key=self.S3_SECRET_ACCESS_KEY,
-            config=Config(signature_version='s3v4')  # 使用S3兼容签名版本
+            aws_access_key_id=self.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=self.AWS_SECRET_ACCESS_KEY,
+            # region_name='your-region'
         )
 
     def compress_image_to_webp(self, image_data, quality=85):
@@ -63,7 +61,7 @@ class OSSUtil:
         # 构建默认的 file_key
         return f"tools/{year}/{month}/{day}/{image_name}-{timestamp}.png"
 
-    def upload_file_to_r2(self, file_path, file_key):
+    def upload_file_to_s3(self, file_path, file_key):
         try:
             # 上传文件
             if file_path and 'http' in file_path:
@@ -91,7 +89,7 @@ class OSSUtil:
             if self.S3_CUSTOM_DOMAIN:
                 file_url = f"https://{self.S3_CUSTOM_DOMAIN}/{file_key}"
             else:
-                file_url = f"{self.S3_ENDPOINT_URL}/{self.S3_BUCKET_NAME}/{file_key}"
+                file_url = f"https://{self.S3_BUCKET_NAME}.s3.amazonaws.com/{file_key}"
 
             logger.info(f"文件URL: {file_url}")
             return file_url
@@ -129,6 +127,6 @@ class OSSUtil:
         if self.S3_CUSTOM_DOMAIN:
             file_url = f"https://{self.S3_CUSTOM_DOMAIN}/{thumbnail_key}"
         else:
-            file_url = f"{self.S3_ENDPOINT_URL}/{self.S3_BUCKET_NAME}/{thumbnail_key}"
+            file_url = f"https://{self.S3_BUCKET_NAME}.s3.amazonaws.com/{thumbnail_key}"
         logger.info(f"缩略图文件URL: {file_url}")
         return file_url

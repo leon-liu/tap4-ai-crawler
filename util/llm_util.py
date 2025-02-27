@@ -1,8 +1,8 @@
 import os
 from dotenv import load_dotenv
-from groq import Groq
 import logging
-from transformers import LlamaTokenizer
+import requests
+from anthropic import Anthropic
 from util.common_util import CommonUtil
 
 # 设置日志记录
@@ -12,22 +12,82 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 util = CommonUtil()
-# 初始化LLaMA模型的Tokenizer
-tokenizer = LlamaTokenizer.from_pretrained("huggyllama/llama-65b")
 
 class LLMUtil:
     def __init__(self):
         load_dotenv()
-        self.groq_api_key = os.getenv('GROQ_API_KEY')
-        logger.info(f"Groq API Key:{self.groq_api_key}")
+        self.max_tokens = int(os.getenv('MAX_TOKENS', 5000))
+        self.api_key = os.getenv('BEDROCK_API_KEY')
+        self.base_url = os.getenv('BEDROCK_BASE_URL')
+        self.model = "claude-3-sonnet"
+        self.anthropic = Anthropic()  # Used for token counting only
+        
+        # Load system prompts from environment variables
         self.detail_sys_prompt = os.getenv('DETAIL_SYS_PROMPT')
         self.tag_selector_sys_prompt = os.getenv('TAG_SELECTOR_SYS_PROMPT')
         self.language_sys_prompt = os.getenv('LANGUAGE_SYS_PROMPT')
-        self.groq_model = os.getenv('GROQ_MODEL')
-        self.groq_max_tokens = int(os.getenv('GROQ_MAX_TOKENS', 5000))
-        self.client = Groq(
-            api_key=self.groq_api_key
-        )
+
+    def process_prompt(self, sys_prompt, user_prompt):
+        if not sys_prompt:
+            logger.info(f"LLM无需处理，sys_prompt为空:{sys_prompt}")
+            return None
+        if not user_prompt:
+            logger.info(f"LLM无需处理，user_prompt为空:{user_prompt}")
+            return None
+
+        logger.info("LLM正在处理")
+        try:
+            # Check token count using Anthropic's tokenizer
+            #token_count = self.anthropic.count_tokens(user_prompt)
+            #if token_count > self.max_tokens:
+            #    logger.info(f"用户输入长度超过{self.max_tokens}个token，当前token数: {token_count}")
+            #    return None
+
+            # Prepare request based on the API documentation
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}"
+            }
+            
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": sys_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": user_prompt
+                    }
+                ],
+                "temperature": 0.2,
+                "max_tokens": min(self.max_tokens, 4096)
+            }
+
+            # Make request to the API
+            response = requests.post(
+                f"{self.base_url}/v1/chat/completions",
+                headers=headers,
+                json=payload
+            )
+
+            # Log response details
+            logger.info(f"Response status code: {response.status_code}")
+            logger.info(f"Response body: {response.json()}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result and result.get('choices') and result['choices'][0].get('message'):
+                    logger.info(f"LLM完成处理，成功响应!")
+                    return result['choices'][0]['message']['content']
+            
+            logger.info("LLM完成处理，处理结果为空")
+            return None
+                
+        except Exception as e:
+            logger.error(f"LLM处理失败", e)
+            return None
 
     def process_detail(self, user_prompt):
         logger.info("正在处理Detail...")
@@ -56,43 +116,3 @@ class LLMUtil:
                 result = result.replace("### ", "").replace("## ", "").replace("# ", "").replace("**", "")
         logger.info(f"多语言:{language}, 处理结果:{result}")
         return result
-
-    def process_prompt(self, sys_prompt, user_prompt):
-        if not sys_prompt:
-            logger.info(f"LLM无需处理，sys_prompt为空:{sys_prompt}")
-            return None
-        if not user_prompt:
-            logger.info(f"LLM无需处理，user_prompt为空:{user_prompt}")
-            return None
-
-        logger.info("LLM正在处理")
-        try:
-            tokens = tokenizer.encode(user_prompt)
-            if len(tokens) > self.groq_max_tokens:
-                logger.info(f"用户输入长度超过{self.groq_max_tokens}，进行截取")
-                truncated_tokens = tokens[:self.groq_max_tokens]
-                user_prompt = tokenizer.decode(truncated_tokens)
-
-            chat_completion = self.client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": sys_prompt,
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt,
-                    }
-                ],
-                model=self.groq_model,
-                temperature=0.2,
-            )
-            if chat_completion.choices[0] and chat_completion.choices[0].message:
-                logger.info(f"LLM完成处理，成功响应!")
-                return chat_completion.choices[0].message.content
-            else:
-                logger.info("LLM完成处理，处理结果为空")
-                return None
-        except Exception as e:
-            logger.error(f"LLM处理失败", e)
-            return None

@@ -109,7 +109,7 @@ class WebsitCrawler:
                 'height': dimensions['height']
             }})
             # 上传图片，返回图片地址
-            screenshot_key = oss.upload_file_to_r2(screenshot_path, image_key)
+            screenshot_key = oss.upload_file_to_s3(screenshot_path, image_key)
 
             # 生成缩略图
             thumnbail_key = oss.generate_thumbnail_image(url, image_key)
