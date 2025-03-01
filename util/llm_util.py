@@ -19,7 +19,7 @@ class LLMUtil:
         self.max_tokens = int(os.getenv('MAX_TOKENS', 5000))
         self.api_key = os.getenv('BEDROCK_API_KEY')
         self.base_url = os.getenv('BEDROCK_BASE_URL')
-        self.model = "claude-3-sonnet"
+        self.model = "claude-3-5-sonnet"#"claude-3-sonnet"
         self.anthropic = Anthropic()  # Used for token counting only
         
         # Load system prompts from environment variables
