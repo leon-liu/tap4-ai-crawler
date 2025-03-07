@@ -207,11 +207,41 @@ def test_google_sheets_save():
             print("\nTip: You might have hit Google Sheets API quota limits. Wait a while and try again")
     
     print("----------------------------------------")
+    
+def get_last_processed_url():
+    """Get the last URL processed from Google Sheets"""
+    try:
+        print("\nChecking last processed URL in Google Sheets...")
+        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        creds = ServiceAccountCredentials.from_json_keyfile_name('link-crawler-452902-36160d579053.json', scope)
+        client = gspread.authorize(creds)
+        
+        sheet = client.open_by_key('1fr6_KuehJqGvW-8hT5XtDlk7uaA-M3yYxJtKh5i-qOs')
+        worksheet = sheet.sheet1
+        
+        # Get all values from first column (toolify URLs)
+        all_values = worksheet.col_values(1)
+        if all_values:
+            last_url = all_values[-1]  # Get the last URL
+            print(f"Found last processed URL: {last_url}")
+            return last_url
+        else:
+            print("No URLs found in sheet, starting from beginning")
+            return None
+            
+    except Exception as e:
+        print(f"Error checking last URL: {str(e)}")
+        return None
 
-def main():
+def main(auto_resume=True):
     main_sitemap_url = 'https://toolify.ai/sitemap.xml'
     
     try:
+        # Get last processed URL if auto-resuming
+        start_from_url = None
+        if auto_resume:
+            start_from_url = get_last_processed_url()
+        
         # Get all sub-sitemap URLs
         print("Parsing main sitemap...")
         sub_sitemaps = parse_sitemap_index(main_sitemap_url)
@@ -225,9 +255,21 @@ def main():
         
         print(f"\nTotal tool URLs found: {len(all_tool_urls)}")
         
-        # Process each tool URL
+        # Find starting index if resuming
+        start_index = 0
+        if start_from_url:
+            try:
+                start_index = all_tool_urls.index(start_from_url)
+                # Start from the next URL after the last processed one
+                start_index += 1
+                print(f"Resuming from next URL after: {start_from_url}")
+                print(f"Starting at index: {start_index}")
+            except ValueError:
+                print(f"Warning: Last processed URL not found in current list, beginning from start")
+        
+        # Process each tool URL from the starting point
         results = []
-        for i, url in enumerate(all_tool_urls, 1):
+        for i, url in enumerate(all_tool_urls[start_index:], start_index + 1):
             print(f"\nProcessing URL {i}/{len(all_tool_urls)}: {url}")
             open_site_url = extract_open_site_url(url)
             if open_site_url:
@@ -249,4 +291,5 @@ def main():
 if __name__ == '__main__':
     #test_google_sheets_save()
     #test_url_extraction
-    main()
+    # Auto-resume from last processed URL
+    main(auto_resume=True)
