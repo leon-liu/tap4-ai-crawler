@@ -82,7 +82,8 @@ async def scrape_async(background_tasks: BackgroundTasks, request: AsyncURLReque
     msg = 'success'
     response = {
         'code': code,
-        'msg': msg
+        'msg': msg,
+        'url': url
     }
     
     # Log the async task initiation
@@ -105,7 +106,8 @@ async def async_worker(url, tags, languages, callback_url, key):
     payload = {
         'code': 200 if result is not None else 10001,
         'msg': 'success' if result is not None else 'fail',
-        'data': result if result is not None else {}
+        'data': result if result is not None else {},
+        'url': url
     }
     
     # Log the complete payload
