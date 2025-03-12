@@ -46,17 +46,14 @@ async def scrape(request: URLRequest, authorization: Optional[str] = Header(None
     result = await website_crawler.scrape_website(url.strip(), tags, languages)
 
     # 若result为None,则 code="10001"，msg="处理异常，请稍后重试"
-    code = 200
-    msg = 'success'
-    if result is None:
-        code = 10001
-        msg = 'fail'
+    code = 200 if result is not None else 10001
+    msg = 'success' if result is not None else 'fail'
 
-    # 将数据映射到 'data' 键下
+    # 将数据映射到 'data' 键下，如果result是None则使用{}
     response = {
         'code': code,
         'msg': msg,
-        'data': result
+        'data': result if result is not None else {}
     }
     return response
 
@@ -100,7 +97,16 @@ async def async_worker(url, tags, languages, callback_url, key):
     # 通过requests post 请求调用call_back_url， 携带参数result， heaer 为key
     try:
         logger.info(f'callback begin:{callback_url}')
-        response = requests.post(callback_url, json=result, headers={'Authorization': 'Bearer ' + key})
+        # Convert None to {} for JSON response
+        response = requests.post(
+            callback_url, 
+            json={
+                'code': 200 if result is not None else 10001,
+                'msg': 'success' if result is not None else 'fail',
+                'data': result if result is not None else {}
+            }, 
+            headers={'Authorization': 'Bearer ' + key}
+        )
         if response.status_code != 200:
             logger.error(f'callback error:{callback_url}', response.text)
         else:
