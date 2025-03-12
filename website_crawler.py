@@ -3,6 +3,7 @@ import logging
 import time
 import random
 from pyppeteer import launch
+import asyncio
 
 from util.common_util import CommonUtil
 from util.llm_util import LLMUtil
@@ -37,8 +38,7 @@ class WebsitCrawler:
     def __init__(self):
         self.browser = None
 
-    # 爬取指定URL网页内容
-    async def scrape_website(self, url, tags, languages):
+    async def _scrape_website_internal(self, url, tags, languages):
         # 开始爬虫处理
         try:
             # 记录程序开始时间
@@ -157,3 +157,18 @@ class WebsitCrawler:
             execution_time = int(time.time()) - start_time
             # 输出程序执行时间
             logger.info("处理" + url + "用时：" + str(execution_time) + " 秒")
+
+    async def scrape_website(self, url, tags, languages):
+        try:
+            # Add 40-second timeout
+            result = await asyncio.wait_for(
+                self._scrape_website_internal(url, tags, languages),
+                timeout=40.0
+            )
+            return result
+        except asyncio.TimeoutError:
+            logger.error(f"处理{url}超时，超过40秒")
+            return None
+        except Exception as e:
+            logger.error(f"处理{url}发生未知错误: {str(e)}")
+            return None
