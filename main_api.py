@@ -55,6 +55,9 @@ async def scrape(request: URLRequest, authorization: Optional[str] = Header(None
         'msg': msg,
         'data': result if result is not None else {}
     }
+    
+    # Log the response
+    logger.info(f"同步接口返回结果: url={url}, code={code}, msg={msg}, data_length={len(str(result)) if result else 0}")
     return response
 
 
@@ -81,6 +84,9 @@ async def scrape_async(background_tasks: BackgroundTasks, request: AsyncURLReque
         'code': code,
         'msg': msg
     }
+    
+    # Log the async task initiation
+    logger.info(f"异步任务已启动: url={url}, callback_url={callback_url}")
     return response
 
 
@@ -94,25 +100,30 @@ def validate_authorization(authorization):
 async def async_worker(url, tags, languages, callback_url, key):
     # 爬虫处理封装为一个异步任务
     result = await website_crawler.scrape_website(url.strip(), tags, languages)
+    
+    # Prepare callback payload
+    payload = {
+        'code': 200 if result is not None else 10001,
+        'msg': 'success' if result is not None else 'fail',
+        'data': result if result is not None else {}
+    }
+    
+    # Log the complete payload
+    logger.info(f'回调payload详情: {payload}')
+    
     # 通过requests post 请求调用call_back_url， 携带参数result， heaer 为key
     try:
-        logger.info(f'callback begin:{callback_url}')
-        # Convert None to {} for JSON response
-        response = requests.post(
-            callback_url, 
-            json={
-                'code': 200 if result is not None else 10001,
-                'msg': 'success' if result is not None else 'fail',
-                'data': result if result is not None else {}
-            }, 
-            headers={'Authorization': 'Bearer ' + key}
-        )
+        logger.info(f'开始回调: url={url}, callback_url={callback_url}')
+        logger.info(f'回调数据: code={payload["code"]}, msg={payload["msg"]}, data_length={len(str(payload["data"]))}')
+        
+        response = requests.post(callback_url, json=payload, headers={'Authorization': 'Bearer ' + key})
+        
         if response.status_code != 200:
-            logger.error(f'callback error:{callback_url}', response.text)
+            logger.error(f'回调失败: url={url}, callback_url={callback_url}, status_code={response.status_code}, response={response.text}')
         else:
-            logger.info(f'callback success:{callback_url}')
+            logger.info(f'回调成功: url={url}, callback_url={callback_url}, status_code={response.status_code}')
     except Exception as e:
-        logger.error(f'call_back exception:{callback_url}', e)
+        logger.error(f'回调异常: url={url}, callback_url={callback_url}, error={str(e)}')
 
 
 if __name__ == '__main__':
