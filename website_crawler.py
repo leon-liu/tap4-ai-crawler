@@ -47,7 +47,7 @@ class WebsitCrawler:
         
         try:
             # Set overall timeout for the entire operation
-            async with asyncio.timeout(40):  # 40 seconds timeout
+            async with asyncio.timeout(110):  # 110 seconds timeout
                 logger.info("正在处理：" + url)
                 if not url.startswith('http://') and not url.startswith('https://'):
                     url = 'https://' + url
