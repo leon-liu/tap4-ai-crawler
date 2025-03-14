@@ -94,11 +94,49 @@ class WebsitCrawler:
                     continue
                 raise
 
+    async def wait_for_page_stability(self, page, timeout=30000):
+        """Wait for page to become stable"""
+        try:
+            # Wait for network to be idle
+            await page.wait_for_load_state('networkidle', timeout=timeout)
+            # Wait a bit more to ensure dynamic content is loaded
+            await asyncio.sleep(2)
+            # Wait for any visible loading indicators to disappear (customize selectors as needed)
+            await page.wait_for_selector('.loading', state='hidden', timeout=5000).catch(lambda _: None)
+            return True
+        except Exception as e:
+            logger.warning(f"Page stability check warning: {e}")
+            return False
+
+    async def get_page_content_safely(self, page, max_attempts=3):
+        """Safely get page content with retries"""
+        for attempt in range(max_attempts):
+            try:
+                # Wait for page to stabilize
+                await self.wait_for_page_stability(page)
+                
+                # Check if page is still navigating
+                if await page.evaluate('() => document.readyState') != 'complete':
+                    if attempt < max_attempts - 1:
+                        await asyncio.sleep(2)
+                        continue
+                
+                # Get content
+                content = await page.content()
+                return content
+            except Exception as e:
+                logger.warning(f"Content retrieval attempt {attempt + 1} failed: {e}")
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(2)
+                    continue
+                raise
+
     # 爬取指定URL网页内容
     async def scrape_website(self, url, tags, languages):
         # 开始爬虫处理
         start_time = int(time.time())
         context = None
+        page = None
         
         try:
             # Set overall timeout for the entire operation
@@ -118,13 +156,21 @@ class WebsitCrawler:
                         height = 1080
                         await page.set_viewport_size({"width": width, "height": height})
 
+                        # Navigate to page with better error handling
                         try:
-                            await page.goto(url, wait_until='networkidle', timeout=100000)
+                            await page.goto(url, timeout=100000)
+                            # Wait for initial load
+                            await page.wait_for_load_state('domcontentloaded', timeout=30000)
                         except Exception as e:
-                            logger.info(f'页面加载超时,不影响继续执行后续流程:{e}')
+                            logger.warning(f'页面加载可能不完整，继续尝试处理：{e}')
 
-                        # 获取网页内容
-                        origin_content = await page.content()
+                        # Get page content safely
+                        try:
+                            origin_content = await self.get_page_content_safely(page)
+                        except Exception as e:
+                            logger.error(f"无法获取页面内容: {e}")
+                            raise
+
                         soup = BeautifulSoup(origin_content, 'html.parser')
 
                         # 通过标签名提取内容
@@ -145,6 +191,9 @@ class WebsitCrawler:
 
                         logger.info(f"url:{url}, title:{title},description:{description}")
 
+                        # Wait for page to stabilize before screenshot
+                        await self.wait_for_page_stability(page)
+
                         # 生成网站截图
                         image_key = oss.get_default_file_key(url)
                         screenshot_path = './' + url.replace("https://", "").replace("http://", "").replace("/", "").replace(".", "-") + '.png'
@@ -162,7 +211,9 @@ class WebsitCrawler:
                         # 使用llm工具处理content
                         detail = llm.process_detail(content)
 
-                        # Close context after successful scraping
+                        # Close page and context after successful scraping
+                        await page.close()
+                        page = None
                         await context.close()
                         context = None
 
@@ -197,6 +248,9 @@ class WebsitCrawler:
 
                     except Exception as e:
                         logger.error(f"Attempt {attempt + 1} failed: {e}")
+                        if page:
+                            await page.close()
+                            page = None
                         if context:
                             await context.close()
                             context = None
@@ -213,6 +267,11 @@ class WebsitCrawler:
             return None
         finally:
             # Clean up resources
+            if page:
+                try:
+                    await page.close()
+                except Exception as e:
+                    logger.error(f"关闭page异常: {str(e)}")
             if context:
                 try:
                     await context.close()
